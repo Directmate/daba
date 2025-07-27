@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Dabba Trader Panel</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', sans-serif;
+      background: #f4f4f4;
+      color: #333;
+    }
+
+    header {
+      background: #343a40;
+      color: #fff;
+      padding: 1rem;
+      text-align: center;
+    }
+
+    nav {
+      display: flex;
+      justify-content: center;
+      background: #007bff;
+    }
+
+    nav button {
+      padding: 1rem;
+      background: none;
+      color: white;
+      border: none;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    nav button.active {
+      background: #0056b3;
+    }
+
+    .container {
+      max-width: 1100px;
+      margin: auto;
+      padding: 1.5rem;
+      background: white;
+      margin-top: 10px;
+      border-radius: 10px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    form, .filters {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+
+    input, select, button {
+      padding: 0.6rem;
+      font-size: 1rem;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+    }
+
+    button {
+      background: #28a745;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #218838;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+
+    th, td {
+      border: 1px solid #ccc;
+      padding: 10px;
+      text-align: center;
+    }
+
+    th {
+      background: #f1f1f1;
+    }
+
+    .summary {
+      margin-top: 20px;
+      background: #f8f9fa;
+      padding: 10px;
+      border-radius: 5px;
+    }
+
+    .hidden { display: none; }
+
+    .btn-danger {
+      background: #dc3545;
+    }
+
+    .btn-danger:hover {
+      background: #c82333;
+    }
+
+    .btn-print {
+      background: #ffc107;
+      color: #000;
+    }
+
+    .btn-print:hover {
+      background: #e0a800;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>Dabba Trader Panel</h1>
+    <p>Manage trades, track profit/loss, and print bills</p>
+  </header>
+
+  <nav>
+    <button class="active" onclick="switchTab('tradeEntry')">📋 Trade Entry</button>
+    <button onclick="switchTab('viewTrades')">📈 View Trades</button>
+    <button onclick="switchTab('billPrint')">🧾 Print Bill</button>
+  </nav>
+
+  <!-- TRADE ENTRY -->
+  <div class="container" id="tradeEntry">
+    <h2>Enter New Trade</h2>
+    <form id="tradeForm">
+      <input type="text" id="username" placeholder="User Name" required>
+      <input type="text" id="script" placeholder="Script Name" required>
+      <select id="type">
+        <option value="buy">Buy</option>
+        <option value="sell">Sell</option>
+      </select>
+      <input type="number" id="qty" placeholder="Quantity" required>
+      <input type="number" step="0.01" id="price" placeholder="Price" required>
+      <button type="submit">Add Trade</button>
+    </form>
+  </div>
+
+  <!-- VIEW TRADES -->
+  <div class="container hidden" id="viewTrades">
+    <h2>All Trades</h2>
+    <div class="filters">
+      <select id="userFilter">
+        <option value="all">All Users</option>
+      </select>
+      <input type="text" id="searchScript" placeholder="Search Script">
+    </div>
+    <div id="tradeTableContainer"></div>
+    <button class="btn-danger" onclick="clearData()">🗑️ Clear All Trades</button>
+  </div>
+
+  <!-- PRINT BILL -->
+  <div class="container hidden" id="billPrint">
+    <h2>Print Bill</h2>
+    <select id="printUserSelect"></select>
+    <div id="printBillSection"></div>
+    <button class="btn-print" onclick="printBill()">🖨️ Print Bill</button>
+  </div>
+
+  <script>
+    let trades = JSON.parse(localStorage.getItem('dabbaTrades') || '{}');
+
+    function saveData() {
+      localStorage.setItem('dabbaTrades', JSON.stringify(trades));
+    }
+
+    function switchTab(tabId) {
+      ['tradeEntry', 'viewTrades', 'billPrint'].forEach(id => {
+        document.getElementById(id).classList.add('hidden');
+      });
+      document.querySelectorAll('nav button').forEach(btn => btn.classList.remove('active'));
+      document.getElementById(tabId).classList.remove('hidden');
+      event.target.classList.add('active');
+      if (tabId === 'viewTrades') renderTrades();
+      if (tabId === 'billPrint') loadPrintOptions();
+    }
+
+    document.getElementById('tradeForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      const uname = document.getElementById('username').value.trim();
+      const script = document.getElementById('script').value.trim();
+      const type = document.getElementById('type').value;
+      const qty = parseInt(document.getElementById('qty').value);
+      const price = parseFloat(document.getElementById('price').value);
+      const time = new Date().toLocaleString();
+
+      if (!uname || !script || !qty || !price) return;
+
+      if (!trades[uname]) trades[uname] = [];
+      trades[uname].push({ script, type, qty, price, time });
+
+      saveData();
+      alert("Trade Added!");
+      this.reset();
+    });
+
+    function renderTrades() {
+      const filterUser = document.getElementById('userFilter');
+      const searchText = document.getElementById('searchScript').value.toLowerCase();
+      const container = document.getElementById('tradeTableContainer');
+      filterUser.innerHTML = `<option value="all">All Users</option>`;
+      container.innerHTML = "";
+
+      for (let user in trades) {
+        filterUser.innerHTML += `<option value="${user}">${user}</option>`;
+      }
+
+      const selectedUser = filterUser.value;
+      for (let user in trades) {
+        if (selectedUser !== 'all' && user !== selectedUser) continue;
+        let html = `<h3>${user}</h3><table>
+        <tr><th>Script</th><th>Type</th><th>Qty</th><th>Price</th><th>Total</th><th>Time</th></tr>`;
+        let buy = 0, sell = 0;
+
+        trades[user].forEach(t => {
+          if (!t.script.toLowerCase().includes(searchText)) return;
+          const total = t.qty * t.price;
+          if (t.type === 'buy') buy += total;
+          else sell += total;
+          html += `<tr>
+            <td>${t.script}</td><td>${t.type}</td><td>${t.qty}</td>
+            <td>₹${t.price.toFixed(2)}</td><td>₹${total.toFixed(2)}</td><td>${t.time}</td>
+          </tr>`;
+        });
+
+        html += `</table><div class="summary">
+          <strong>Total Buy:</strong> ₹${buy.toFixed(2)} |
+          <strong>Total Sell:</strong> ₹${sell.toFixed(2)} |
+          <strong>Profit/Loss:</strong> ₹${(sell - buy).toFixed(2)}
+        </div><hr>`;
+        container.innerHTML += html;
+      }
+    }
+
+    document.getElementById('userFilter').addEventListener('change', renderTrades);
+    document.getElementById('searchScript').addEventListener('input', renderTrades);
+
+    function clearData() {
+      if (confirm("Delete all trades?")) {
+        trades = {};
+        saveData();
+        renderTrades();
+      }
+    }
+
+    function loadPrintOptions() {
+      const select = document.getElementById('printUserSelect');
+      select.innerHTML = '';
+      for (let user in trades) {
+        select.innerHTML += `<option value="${user}">${user}</option>`;
+      }
+      updatePrintSection();
+      select.onchange = updatePrintSection;
+    }
+
+    function updatePrintSection() {
+      const user = document.getElementById('printUserSelect').value;
+      const data = trades[user] || [];
+      let html = `<h3>Bill for: ${user}</h3><table>
+        <tr><th>Script</th><th>Type</th><th>Qty</th><th>Price</th><th>Total</th><th>Time</th></tr>`;
+      let buy = 0, sell = 0;
+
+      data.forEach(t => {
+        const total = t.qty * t.price;
+        if (t.type === 'buy') buy += total;
+        else sell += total;
+        html += `<tr>
+          <td>${t.script}</td><td>${t.type}</td><td>${t.qty}</td>
+          <td>₹${t.price.toFixed(2)}</td><td>₹${total.toFixed(2)}</td><td>${t.time}</td>
+        </tr>`;
+      });
+
+      const pl = sell - buy;
+      const commission = (buy + sell) * 0.001; // 0.1%
+      const net = pl - commission;
+
+      html += `</table><div class="summary">
+        <strong>Total Buy:</strong> ₹${buy.toFixed(2)}<br>
+        <strong>Total Sell:</strong> ₹${sell.toFixed(2)}<br>
+        <strong>Profit/Loss:</strong> ₹${pl.toFixed(2)}<br>
+        <strong>Commission (0.1%):</strong> ₹${commission.toFixed(2)}<br>
+        <strong>Net P/L:</strong> ₹${net.toFixed(2)}
+      </div>`;
+      document.getElementById('printBillSection').innerHTML = html;
+    }
+
+    function printBill() {
+      const content = document.getElementById('printBillSection').innerHTML;
+      const win = window.open('', '', 'width=900,height=700');
+      win.document.write(`<html><head><title>Print Bill</title></head><body>${content}</body></html>`);
+      win.document.close();
+      win.print();
+    }
+
+    // Initialize user dropdowns on load
+    window.onload = () => {
+      renderTrades();
+      loadPrintOptions();
+    }
+  </script>
+
+</body>
+</html>
